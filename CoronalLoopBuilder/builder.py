@@ -5,6 +5,9 @@ import astropy.constants as const
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider, TextBox
+import pickle
+import warnings
+from astropy.time import Time
 
 
 def circle_3d(x0, y0, z0, r, theta, phi, t):
@@ -30,11 +33,11 @@ def circle_3d(x0, y0, z0, r, theta, phi, t):
 
     # Orthogonal vector in the plane of the circle
     u = np.cross(n, z)
-    u = u / np.linalg.norm(u)  # Normalize
+    u /= np.linalg.norm(u)  # Normalize
 
     # Another orthogonal vector in the plane
     v = np.cross(n, u)
-    v = v / np.linalg.norm(v)  # Normalize
+    v /= np.linalg.norm(v)  # Normalize
 
     # Parametric equations
     x = x0 + r * np.cos(t) * u[0] + r * np.sin(t) * v[0]
@@ -89,6 +92,9 @@ def semi_circle_loop(radius, height, theta0=0 * u.deg, phi0=0 * u.deg, el=90 * u
     x = np.roll(x, -rsort)
     y = np.roll(y, -rsort)
     z = np.roll(z, -rsort)
+    dx = np.roll(dx, -rsort)
+    dy = np.roll(dy, -rsort)
+    dz = np.roll(dz, -rsort)
 
     i_r = np.where(r > r_1)
     # r = r[i_r]
@@ -96,9 +102,29 @@ def semi_circle_loop(radius, height, theta0=0 * u.deg, phi0=0 * u.deg, el=90 * u
     x = x[i_r]
     y = y[i_r]
     z = z[i_r]
+    dx = dx[i_r]
+    dy = dy[i_r]
+    dz = dz[i_r]
+
+    # Calculate the length of the loop based on the angle between the start and end points.
+    # Define the vectors v1 and v2
+    v1 = np.array([dx[0].value, dy[0].value, dz[0].value]) * dx[0].unit
+    v2 = np.array([dx[-1].value, dy[-1].value, dz[-1].value]) * dx[0].unit
+    # Calculate the angle between the vectors (alpha) using the dot product
+    cos_alpha = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+    alpha = np.arccos(cos_alpha)
+
+    # Use the cross product to determine the orientation
+    cross_product = np.cross(v1, v2)
+    if cross_product[2] < 0:  # Assuming z is the up direction
+        alpha = 2 * np.pi * alpha.unit - alpha
+
+    # Calculate the arc length
+    loop_length = alpha.value * radius
+    print('Loop length:', loop_length)
     hcc_frame = Heliocentric(observer=SkyCoord(
         lon=phi0, lat=theta0, radius=r_1, frame='heliographic_stonyhurst'))
-    return (SkyCoord(x=x, y=y, z=z, frame=hcc_frame).transform_to('heliographic_stonyhurst'))
+    return (SkyCoord(x=x, y=y, z=z, frame=hcc_frame).transform_to('heliographic_stonyhurst')), loop_length
 
 
 class CoronalLoopBuilder:
@@ -106,40 +132,69 @@ class CoronalLoopBuilder:
     Class to build and visualize a coronal loop based on user-defined parameters using sliders.
     """
 
-    def __init__(self, fig, axs, dummy_maps, radius, height, theta0, phi0, el, az, samples_num):
+    def __init__(self, fig, axs, dummy_maps, radius, height, phi0, theta0, el, az, samples_num):
         """
         Initialize the CoronalLoopBuilder with given parameters and create the initial visualization.
         """
+
         self.fig = fig
         self.axs = axs
         self.dummy_maps = dummy_maps
         self.radius = radius
-        self.height = height
-        self.theta0 = theta0
+        self._height = height
         self.phi0 = phi0
+        self.theta0 = theta0
         self.el = el
         self.az = az
         self.samples_num = int(samples_num)
+        self.loop_length = None
+        self.from_textbox = False
+        # a flag to check if the class is still initializing
+        self.initializing = True
+        self.updating_sliders = False
+        # When a slider's value is changed, it triggers its on_changed event.
+        # If, within the update function, it programmatically sets the value of a slider
+        # (e.g., to enforce some constraints), this will again trigger the on_changed event,
+        # leading to redundant calls.
+        # Add a flag to indicate whether the update is triggered by a user action or programmatically
+        self.programmatic_update = False
 
         self.lines = []
         self.ptns = []
-        self.loop = self.compute_loop()
-        self.midpoint = (SkyCoord(lon=self.phi0, lat=self.theta0, radius=const.R_sun, frame='heliographic_stonyhurst'))
+        self.loop_coords = self.compute_loop()
+        self.midptn_coords = (
+            SkyCoord(lon=self.phi0, lat=self.theta0, radius=const.R_sun, frame='heliographic_stonyhurst'))
 
         for ax, dummy_map in zip(self.axs, self.dummy_maps):
-            line, = ax.plot_coord(self.loop.transform_to(dummy_map.coordinate_frame), color='C0', lw=2)
-            ptn, = ax.plot_coord(self.midpoint.transform_to(dummy_map.coordinate_frame), color='C3', marker='o', ms=3)
+            line, = ax.plot_coord(self.loop_coords.transform_to(dummy_map.coordinate_frame), color='C0', lw=2)
+            ptn, = ax.plot_coord(self.midptn_coords.transform_to(dummy_map.coordinate_frame), color='C3', marker='o',
+                                 ms=3)
             self.lines.append(line)
             self.ptns.append(ptn)
         self.init_sliders()
         # plt.close(self.slider_fig)
         # self.slider_fig = None
 
+    @property
+    def height(self):
+        return self._height
+
+    @height.setter
+    def height(self, value):
+        if value > self.radius:
+            warnings.warn("Height exceeds recommended value! Adjusting to 90% of radius.")
+            self._height = self.radius * 0.9
+        elif value < -self.radius:
+            warnings.warn("Height is too negative! Adjusting to -90% of radius.")
+            self._height = -self.radius * 0.9
+        else:
+            self._height = value
+
     def init_sliders(self):
         """
         Initialize sliders for adjusting loop parameters.
         """
-
+        self.updating_sliders = True
         # Create a separate figure for the sliders
         self.slider_fig, axs_sliders = plt.subplots(nrows=7, ncols=2, figsize=(6, 3), width_ratios=[5, 1])
         self.slider_fig.subplots_adjust(left=0.3, wspace=0.1)
@@ -166,31 +221,45 @@ class CoronalLoopBuilder:
         self.slider_samples_num.valtext.set_visible(False)
 
         def submit_radius(text):
+            self.from_textbox = True
             self.slider_radius.set_val(float(text))
+            self.from_textbox = False
             self.update(None)
 
         def submit_height(text):
+            self.from_textbox = True
             self.slider_height.set_val(float(text))
+            self.from_textbox = False
             self.update(None)
 
         def submit_phi0(text):
+            self.from_textbox = True
             self.slider_phi0.set_val(float(text))
+            self.from_textbox = False
             self.update(None)
 
         def submit_theta0(text):
+            self.from_textbox = True
             self.slider_theta0.set_val(float(text))
+            self.from_textbox = False
             self.update(None)
 
         def submit_el(text):
+            self.from_textbox = True
             self.slider_el.set_val(float(text))
+            self.from_textbox = False
             self.update(None)
 
         def submit_az(text):
+            self.from_textbox = True
             self.slider_az.set_val(float(text))
+            self.from_textbox = False
             self.update(None)
 
         def submit_samples_num(text):
+            self.from_textbox = True
             self.slider_samples_num.set_val(float(text))
+            self.from_textbox = False
             self.update(None)
 
         axbox_radius = axs_sliders[0, 1]
@@ -237,6 +306,10 @@ class CoronalLoopBuilder:
         self.slider_az.on_changed(self.update)
         self.slider_samples_num.on_changed(self.update_samples_num)
 
+        # turn the flag off when the class is still initialized
+        self.initializing = False
+        self.updating_sliders = False
+
     def init_toggle_button(self):
         """
         Initialize a button to toggle the visibility of the sliders.
@@ -255,8 +328,10 @@ class CoronalLoopBuilder:
         if self.slider_fig is not None and plt.fignum_exists(self.slider_fig.number):
             plt.close(self.slider_fig)
             self.slider_fig = None
+            self.initializing = True
         else:
             self.init_sliders()
+            self.initializing = True
             # Set the sliders to the current values
             self.slider_radius.set_val(self.radius.value)
             self.slider_height.set_val(self.height.value)
@@ -264,6 +339,7 @@ class CoronalLoopBuilder:
             self.slider_theta0.set_val(self.theta0.value)
             self.slider_el.set_val(self.el.value)
             self.slider_az.set_val(self.az.value)
+            self.initializing = False
             self.slider_samples_num.set_val(int(self.samples_num))
             self.init_toggle_button()
 
@@ -281,14 +357,19 @@ class CoronalLoopBuilder:
         """
         Compute the coordinates of the coronal loop based on the current slider values.
         """
-        # print(1)
-        return semi_circle_loop(self.radius, self.height, self.theta0, self.phi0, self.el, self.az,
-                                int(self.samples_num))
+        loop, self.loop_length = semi_circle_loop(self.radius, self.height, self.theta0, self.phi0, self.el, self.az,
+                                                  int(self.samples_num))
+        return loop
 
     def update(self, val):
         """
         Update the visualization based on the current slider values.
         """
+
+        if self.programmatic_update or self.initializing or self.updating_sliders or self.from_textbox:
+            return
+
+        self.programmatic_update = True
         self.radius = u.Quantity(self.slider_radius.val, u.Mm)
         self.height = u.Quantity(self.slider_height.val, u.Mm)
         self.phi0 = u.Quantity(self.slider_phi0.val, u.deg)
@@ -304,24 +385,43 @@ class CoronalLoopBuilder:
             self.height = -self.radius * 0.9
             self.slider_height.set_val(self.height.value)  # Update the slider value to reflect the change
 
-        self.loop = self.compute_loop()
-        self.midpoint = (SkyCoord(lon=self.phi0, lat=self.theta0, radius=const.R_sun, frame='heliographic_stonyhurst'))
+        # newheight = u.Quantity(self.slider_height.val, u.Mm)
+        # if newheight > self.radius:
+        #     self.slider_height.set_val(self.height.value)
+        # elif newheight < -self.radius:
+        #     self.slider_height.set_val(self.height.value)
+        # else:
+        #     self.height = newheight
+
+        self.loop_coords = self.compute_loop()
+        self.midptn_coords = (
+            SkyCoord(lon=self.phi0, lat=self.theta0, radius=const.R_sun, frame='heliographic_stonyhurst'))
 
         # Update the lines
-        # self.line1.set_data(self.loop.transform_to(dummy_map1.coordinate_frame))
-        # self.line2.set_data(self.loop.transform_to(dummy_map2.coordinate_frame))
-        for line, ptn in zip(self.lines, self.ptns):
-            line.remove()
-            ptn.remove()
+        for ptn, line, dummy_map in zip(self.ptns, self.lines, self.dummy_maps):
+            midptn_coords = self.midptn_coords.transform_to(dummy_map.coordinate_frame)
+            ptn.set_xdata(midptn_coords.spherical.lon.deg)
+            line.set_ydata(midptn_coords.spherical.lat.deg)
+            loop_coords = self.loop_coords.transform_to(dummy_map.coordinate_frame)
+            line.set_xdata(loop_coords.spherical.lon.deg)
+            line.set_ydata(loop_coords.spherical.lat.deg)
 
-        self.lines = []
-        self.ptns = []
-        for ax, dummy_map in zip(self.axs, self.dummy_maps):
-            line, = ax.plot_coord(self.loop.transform_to(dummy_map.coordinate_frame), color='C0', lw=2)
-            ptn, = ax.plot_coord(self.midpoint.transform_to(dummy_map.coordinate_frame), color='C3', marker='o', ms=3)
-            self.lines.append(line)
-            self.ptns.append(ptn)
+        for ax in self.axs:
             ax.figure.canvas.draw_idle()
+
+        # for line, ptn in zip(self.lines, self.ptns):
+        #     line.remove()
+        #     ptn.remove()
+        #
+        # self.lines = []
+        # self.ptns = []
+        # for ax, dummy_map in zip(self.axs, self.dummy_maps):
+        #     line, = ax.plot_coord(self.loop_coords.transform_to(dummy_map.coordinate_frame), color='C0', lw=2)
+        #     ptn, = ax.plot_coord(self.midptn_coords.transform_to(dummy_map.coordinate_frame), color='C3', marker='o',
+        #                          ms=3)
+        #     self.lines.append(line)
+        #     self.ptns.append(ptn)
+        #     ax.figure.canvas.draw_idle()
 
         # Update text box values
         if hasattr(self, 'text_box_radius'):
@@ -338,3 +438,21 @@ class CoronalLoopBuilder:
             self.text_box_az.set_val('{:.1f}'.format(self.az.value))
         if hasattr(self, 'text_box_samples_num'):
             self.text_box_samples_num.set_val('{:.0f}'.format(int(self.samples_num)))
+
+        self.programmatic_update = False
+
+    def save_loop_data_to_pickle(self, filename="coronal_loop.pkl"):
+        """
+        Save the loop data to a pickle file.
+
+        Parameters:
+        - filename (str): The name of the pickle file to save to. Defaults to "coronal_loop.pkl".
+        """
+        data_to_save = {
+            "loop": self.loop_coords,
+            "length": self.loop_length
+        }
+
+        with open(filename, 'wb') as file:
+            pickle.dump(data_to_save, file)
+        print(f"Loop coords data saved to {filename}!")
