@@ -78,17 +78,15 @@ for midx, dummy_map in enumerate(dummy_maps):
     dummy_map.draw_limb(axes=ax, color='k')
 
 # Initialize the CoronalLoopBuilder with the dummy maps
-coronal_loop = CoronalLoopBuilder(fig, axs, dummy_maps, 100 * u.Mm, -20 * u.Mm,  45 * u.deg,30 * u.deg,
+coronal_loop = CoronalLoopBuilder(fig, axs, dummy_maps, 50 * u.Mm, -10 * u.Mm, 45 * u.deg, 30 * u.deg,
                                   100 * u.deg, 10 * u.deg, 100)
-# coronal_loop = CoronalLoopBuilder(fig, axs, dummy_maps, 100 * u.Mm, 0 * u.Mm, 90 * u.deg, 0 * u.deg,
-#                                   90 * u.deg, 0 * u.deg, 100)
 
-# Add interactive toggle button and sliders to adjust coronal loop parameters
-coronal_loop.init_toggle_button()
-coronal_loop.toggle_sliders(1)
-
-# Display the plot with the interactive features
 plt.show()
 
-# After adjusting the loop parameters interactively, save the loop data to "my_loop_data.pkl":
-coronal_loop.save_loop_data_to_pickle("my_loop_data.pkl")
+# Once you've fine-tuned the loop parameters using the interactive interface,
+# you can save the loop data to a pickle file for future use:
+coronal_loop.save_loop_data_to_pickle("my_loop_coords.pkl")
+
+# To capture a clean visualization of the loop without any UI elements,
+# save the current figure to a high-resolution PDF:
+coronal_loop.save_to_fig("fig-my_loop.pdf", dpi=300, bbox_inches='tight')

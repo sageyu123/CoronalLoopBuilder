@@ -149,6 +149,7 @@ class CoronalLoopBuilder:
         self.samples_num = int(samples_num)
         self.loop_length = None
         self.from_textbox = False
+        self.ax_button_sliders_toggle = None
         # a flag to check if the class is still initializing
         self.initializing = True
         self.updating_sliders = False
@@ -172,6 +173,7 @@ class CoronalLoopBuilder:
             self.lines.append(line)
             self.ptns.append(ptn)
         self.init_sliders()
+        self.init_toggle_button()
         # plt.close(self.slider_fig)
         # self.slider_fig = None
 
@@ -265,37 +267,37 @@ class CoronalLoopBuilder:
         axbox_radius = axs_sliders[0, 1]
         self.text_box_radius = TextBox(axbox_radius, '')
         self.text_box_radius.on_submit(submit_radius)
-        self.text_box_radius.set_val('{:.1f}'.format(self.radius.value))
+        self.text_box_radius.set_val(f"{self.radius.value:.1f}")
 
         axbox_height = axs_sliders[1, 1]
         self.text_box_height = TextBox(axbox_height, '')
         self.text_box_height.on_submit(submit_height)
-        self.text_box_height.set_val('{:.1f}'.format(self.height.value))
+        self.text_box_height.set_val(f"{self.height.value:.1f}")
 
         axbox_phi0 = axs_sliders[2, 1]
         self.text_box_phi0 = TextBox(axbox_phi0, '')
         self.text_box_phi0.on_submit(submit_phi0)
-        self.text_box_phi0.set_val('{:.1f}'.format(self.phi0.value))
+        self.text_box_phi0.set_val(f"{self.phi0.value:.2f}")
 
         axbox_theta0 = axs_sliders[3, 1]
         self.text_box_theta0 = TextBox(axbox_theta0, '')
         self.text_box_theta0.on_submit(submit_theta0)
-        self.text_box_theta0.set_val('{:.1f}'.format(self.theta0.value))
+        self.text_box_theta0.set_val(f"{self.theta0.value:.2f}")
 
         axbox_el = axs_sliders[4, 1]
         self.text_box_el = TextBox(axbox_el, '')
         self.text_box_el.on_submit(submit_el)
-        self.text_box_el.set_val('{:.1f}'.format(self.el.value))
+        self.text_box_el.set_val(f"{self.el.value:.2f}")
 
         axbox_az = axs_sliders[5, 1]
         self.text_box_az = TextBox(axbox_az, '')
         self.text_box_az.on_submit(submit_az)
-        self.text_box_az.set_val('{:.1f}'.format(self.az.value))
+        self.text_box_az.set_val(f"{self.az.value:.2f}")
 
         axbox_samples_num = axs_sliders[6, 1]
         self.text_box_samples_num = TextBox(axbox_samples_num, '')
         self.text_box_samples_num.on_submit(submit_samples_num)
-        self.text_box_samples_num.set_val('{:.0f}'.format(int(self.samples_num)))
+        self.text_box_samples_num.set_val(f"{int(self.samples_num):.0f}")
 
         # Attach update function to sliders
         self.slider_radius.on_changed(self.update)
@@ -306,6 +308,11 @@ class CoronalLoopBuilder:
         self.slider_az.on_changed(self.update)
         self.slider_samples_num.on_changed(self.update_samples_num)
 
+        # Create a button to print the values
+        ax_button_print = self.slider_fig.add_axes([0.7, 0.01, 0.2, 0.07])  # Adjust the position and size as needed
+        self.button_print_values = plt.Button(ax_button_print, 'Print Values')
+        self.button_print_values.on_clicked(self.print_values)
+
         # turn the flag off when the class is still initialized
         self.initializing = False
         self.updating_sliders = False
@@ -314,11 +321,11 @@ class CoronalLoopBuilder:
         """
         Initialize a button to toggle the visibility of the sliders.
         """
-
         # Add a button to toggle the sliders figure
-        ax_button = self.fig.add_axes([0.8, 0.9, 0.1, 0.04])
-        self.button_toggle_sliders = plt.Button(ax_button, 'Settings')
-        self.button_toggle_sliders.on_clicked(self.toggle_sliders)
+        if not hasattr(self, 'button_toggle_sliders'):
+            self.ax_button_sliders_toggle = self.fig.add_axes([0.8, 0.9, 0.1, 0.04])
+            self.button_toggle_sliders = plt.Button(self.ax_button_sliders_toggle, 'Settings')
+            self.button_toggle_sliders.on_clicked(self.toggle_sliders)
 
     def toggle_sliders(self, event):
         """
@@ -350,7 +357,7 @@ class CoronalLoopBuilder:
 
         # Ensure the displayed value is an integer
         self.samples_num = int(self.slider_samples_num.val)
-        self.slider_samples_num.valtext.set_text('{:.0f}'.format(self.slider_samples_num.val))
+        self.slider_samples_num.valtext.set_text(f"{int(self.slider_samples_num.val)}")
         self.update(val)
 
     def compute_loop(self):
@@ -360,6 +367,15 @@ class CoronalLoopBuilder:
         loop, self.loop_length = semi_circle_loop(self.radius, self.height, self.theta0, self.phi0, self.el, self.az,
                                                   int(self.samples_num))
         return loop
+
+    def print_values(self, event):
+        print(f"{self.radius.value:.1f} * u.{self.radius.unit}, "
+              f"{self.height.value:.1f} * u.{self.height.unit}, "
+              f"{self.phi0.value:.2f} * u.{self.phi0.unit}, "
+              f"{self.theta0.value:.2f} * u.{self.theta0.unit}, "
+              f"{self.el.value:.2f} * u.{self.el.unit}, "
+              f"{self.az.value:.2f} * u.{self.az.unit}, "
+              f"{int(self.samples_num)}")
 
     def update(self, val):
         """
@@ -401,7 +417,7 @@ class CoronalLoopBuilder:
         for ptn, line, dummy_map in zip(self.ptns, self.lines, self.dummy_maps):
             midptn_coords = self.midptn_coords.transform_to(dummy_map.coordinate_frame)
             ptn.set_xdata(midptn_coords.spherical.lon.deg)
-            line.set_ydata(midptn_coords.spherical.lat.deg)
+            ptn.set_ydata(midptn_coords.spherical.lat.deg)
             loop_coords = self.loop_coords.transform_to(dummy_map.coordinate_frame)
             line.set_xdata(loop_coords.spherical.lon.deg)
             line.set_ydata(loop_coords.spherical.lat.deg)
@@ -425,19 +441,19 @@ class CoronalLoopBuilder:
 
         # Update text box values
         if hasattr(self, 'text_box_radius'):
-            self.text_box_radius.set_val('{:.1f}'.format(self.radius.value))
+            self.text_box_radius.set_val(f"{self.radius.value:.1f}")
         if hasattr(self, 'text_box_height'):
-            self.text_box_height.set_val('{:.1f}'.format(self.height.value))
+            self.text_box_height.set_val(f"{self.height.value:.1f}")
         if hasattr(self, 'text_box_phi0'):
-            self.text_box_phi0.set_val('{:.1f}'.format(self.phi0.value))
+            self.text_box_phi0.set_val(f"{self.phi0.value:.2f}")
         if hasattr(self, 'text_box_theta0'):
-            self.text_box_theta0.set_val('{:.1f}'.format(self.theta0.value))
+            self.text_box_theta0.set_val(f"{self.theta0.value:.2f}")
         if hasattr(self, 'text_box_el'):
-            self.text_box_el.set_val('{:.1f}'.format(self.el.value))
+            self.text_box_el.set_val(f"{self.el.value:.2f}")
         if hasattr(self, 'text_box_az'):
-            self.text_box_az.set_val('{:.1f}'.format(self.az.value))
+            self.text_box_az.set_val(f"{self.az.value:.2f}")
         if hasattr(self, 'text_box_samples_num'):
-            self.text_box_samples_num.set_val('{:.0f}'.format(int(self.samples_num)))
+            self.text_box_samples_num.set_val(f"{int(self.samples_num)}")
 
         self.programmatic_update = False
 
@@ -456,3 +472,19 @@ class CoronalLoopBuilder:
         with open(filename, 'wb') as file:
             pickle.dump(data_to_save, file)
         print(f"Loop coords data saved to {filename}!")
+
+    def save_to_fig(self, figname, **kwargs):
+        # Hide the "Settings" button
+        if hasattr(self, 'button_toggle_sliders'):
+            self.button_toggle_sliders.ax.set_visible(False)
+            # self.toggle_sliders(1)
+            self.fig.canvas.draw_idle()
+
+        # Save the figure with additional kwargs
+        self.fig.savefig(figname, **kwargs)
+
+        # Restore the "Settings" button
+        if hasattr(self, 'button_toggle_sliders'):
+            # self.toggle_sliders(1)
+            self.button_toggle_sliders.ax.set_visible(True)
+            self.fig.canvas.draw_idle()
