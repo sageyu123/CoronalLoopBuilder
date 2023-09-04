@@ -23,6 +23,7 @@ CoronalLoopBuilder is a Python package designed to generate and visualize corona
 
 3. **Integration with Solar Images**: Replace the dummy maps in the example with real solar images to visualize coronal loops on actual solar observations.
    ![example](./examples/fig-singleloop.png)
+   ![example](./examples/fig-settings.png)
 
 ## Contributing
 
