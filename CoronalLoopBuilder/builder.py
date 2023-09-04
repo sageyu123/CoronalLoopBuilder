@@ -488,3 +488,4 @@ class CoronalLoopBuilder:
             # self.toggle_sliders(1)
             self.button_toggle_sliders.ax.set_visible(True)
             self.fig.canvas.draw_idle()
+        print(f"Loop fig saved to {figname}!")
