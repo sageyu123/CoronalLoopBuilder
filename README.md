@@ -19,7 +19,7 @@ CoronalLoopBuilder is a Python package designed to generate and visualize corona
     pip install -r requirements.txt
     ```
 
-2. **Running the Example**: Navigate to the `examples` directory and run the provided example to see the `CoronalLoopBuilder` in action.
+2. **Running the Example**: Navigate to the `examples` directory and run the provided [example script](./examples/fig-singleloop.py) to see the `CoronalLoopBuilder` in action.
 
 3. **Integration with Solar Images**: Replace the dummy maps in the example with real solar images to visualize coronal loops on actual solar observations.
    ![example](./examples/fig-singleloop.png)
