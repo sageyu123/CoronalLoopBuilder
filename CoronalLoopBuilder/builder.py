@@ -47,7 +47,7 @@ def circle_3d(x0, y0, z0, r, theta, phi, t):
     return x, y, z
 
 
-def semi_circle_loop(radius, height, theta0=0 * u.deg, phi0=0 * u.deg, el=90 * u.deg, az=0 * u.deg, num_samples=50):
+def semi_circle_loop(radius, height, theta0=0 * u.deg, phi0=0 * u.deg, el=90 * u.deg, az=0 * u.deg, samples_num=100):
     '''
     Compute a semicircular loop with both footpoints rooted on the surface of the Sun.
 
@@ -58,7 +58,7 @@ def semi_circle_loop(radius, height, theta0=0 * u.deg, phi0=0 * u.deg, el=90 * u
     - phi0: Heliographic Stonyhurst longitude (phi) of the center of the circle. Default is 0 degrees.
     - el: Elevation angle of the circle's normal. It ranges from 0 to 180 degrees. Default is 90 degrees.
     - az: Azimuth angle of the circle's normal. It ranges from 0 to 360 degrees. Default is 0 degrees.
-    - num_samples: Number of samples for the parameter t. Default is 50.
+    - samples_num: Number of samples for the parameter t. Default is 1000.
 
 
     Returns:
@@ -75,7 +75,7 @@ def semi_circle_loop(radius, height, theta0=0 * u.deg, phi0=0 * u.deg, el=90 * u
 
     theta = el.to(u.rad).value  # np.pi / 2  # Elevation angle
     phi = az.to(u.rad).value  # np.pi / 4  # Azimuth angle
-    t = np.linspace(0, 2 * np.pi, int(num_samples))  # Parameter t
+    t = np.linspace(0, 2 * np.pi, int(samples_num))  # Parameter t
 
     dx, dy, dz = circle_3d(0, 0, 0, radius, theta, phi, t)
 
@@ -132,21 +132,60 @@ class CoronalLoopBuilder:
     Class to build and visualize a coronal loop based on user-defined parameters using sliders.
     """
 
-    def __init__(self, fig, axs, dummy_maps, radius, height, phi0, theta0, el, az, samples_num):
+    def __init__(self, fig, axs, dummy_maps, **kwargs):
         """
         Initialize the CoronalLoopBuilder with given parameters and create the initial visualization.
+
+        Parameters:
+        - fig: The figure object.
+        - axs: The axes object.
+        - dummy_maps: Dummy maps for demonstration.
+        - radius: Radius of the semi-circular loop in units compatible with astropy.units (e.g., u.Mm).
+        - height: Height of the center of the circle relative to the photosphere in units compatible with astropy.units (e.g., u.Mm).
+        - phi0: Heliographic Stonyhurst longitude (phi) of the center of the circle. Default is 0 degrees.
+        - theta0: Heliographic Stonyhurst latitude (theta) of the center of the circle. Default is 0 degrees.
+        - el: Elevation angle of the circle's normal. It ranges from 0 to 180 degrees. Default is 90 degrees.
+        - az: Azimuth angle of the circle's normal. It ranges from 0 to 360 degrees. Default is 0 degrees.
+        - samples_num: Number of samples for the parameter t. Default is 1000.
         """
+        DEFAULT_RADIUS = 10.0 * u.Mm
+        DEFAULT_HEIGHT = 0.0 * u.Mm
+        DEFAULT_PHI0 = 0.0 * u.deg
+        DEFAULT_THETA0 = 0.0 * u.deg
+        DEFAULT_EL = 90.0 * u.deg
+        DEFAULT_AZ = 0.0 * u.deg
+        DEFAULT_SAMPLES_NUM = 1000
 
         self.fig = fig
         self.axs = axs
         self.dummy_maps = dummy_maps
-        self.radius = radius
-        self._height = height
-        self.phi0 = phi0
-        self.theta0 = theta0
-        self.el = el
-        self.az = az
-        self.samples_num = int(samples_num)
+
+        # Set the loop parameters using the provided values or default values
+        self.radius = kwargs.get('radius', DEFAULT_RADIUS)
+        self._height = kwargs.get('height', DEFAULT_HEIGHT)
+        self.phi0 = kwargs.get('phi0', DEFAULT_PHI0)
+        self.theta0 = kwargs.get('theta0', DEFAULT_THETA0)
+        self.el = kwargs.get('el', DEFAULT_EL)
+        self.az = kwargs.get('az', DEFAULT_AZ)
+        self.samples_num = kwargs.get('samples_num', DEFAULT_SAMPLES_NUM)
+
+        # Store the initial values as class attributes
+        self.initial_radius = self.radius
+        self.initial_height = self.height
+        self.initial_phi0 = self.phi0
+        self.initial_theta0 = self.theta0
+        self.initial_el = self.el
+        self.initial_az = self.az
+        self.initial_samples_num = self.samples_num
+
+        # self.radius = radius
+        # self._height = height
+        # self.phi0 = phi0
+        # self.theta0 = theta0
+        # self.el = el
+        # self.az = az
+        # self.samples_num = int(samples_num)
+
         self.loop_length = None
         self.from_textbox = False
         self.ax_button_sliders_toggle = None
@@ -162,7 +201,7 @@ class CoronalLoopBuilder:
 
         self.lines = []
         self.ptns = []
-        self.loop_coords = self.compute_loop()
+        self.loop_coords = self._compute_loop()
         self.midptn_coords = (
             SkyCoord(lon=self.phi0, lat=self.theta0, radius=const.R_sun, frame='heliographic_stonyhurst'))
 
@@ -172,8 +211,8 @@ class CoronalLoopBuilder:
                                  ms=3)
             self.lines.append(line)
             self.ptns.append(ptn)
-        self.init_sliders()
-        self.init_toggle_button()
+        self._init_sliders()
+        self._init_toggle_button()
         # plt.close(self.slider_fig)
         # self.slider_fig = None
 
@@ -192,7 +231,7 @@ class CoronalLoopBuilder:
         else:
             self._height = value
 
-    def init_sliders(self):
+    def _init_sliders(self):
         """
         Initialize sliders for adjusting loop parameters.
         """
@@ -204,12 +243,13 @@ class CoronalLoopBuilder:
         # # Create sliders
         ax_slider_radius, ax_slider_height, ax_slider_phi0, ax_slider_theta0, \
             ax_slider_el, ax_slider_az, ax_slider_samples_num = axs_sliders[:, 0]
-        self.slider_radius = Slider(ax_slider_radius, 'Radius [Mm]', 3, 500, valinit=self.radius.value)
-        self.slider_height = Slider(ax_slider_height, 'Height [Mm]', -300, 300, valinit=self.height.value)
-        self.slider_phi0 = Slider(ax_slider_phi0, r'HGLN $\Phi$ [deg]', 0, 360, valinit=self.phi0.value)
-        self.slider_theta0 = Slider(ax_slider_theta0, r'HGLT $\Theta$ [deg]', -90, 90, valinit=self.theta0.value)
-        self.slider_el = Slider(ax_slider_el, 'Elevation [deg]', 0, 180, valinit=self.el.value)
-        self.slider_az = Slider(ax_slider_az, 'Azimuth [deg]', 0, 360, valinit=self.az.value)
+        self.slider_radius = Slider(ax_slider_radius, 'Radius [Mm]', 3, 500, valinit=self.radius.to(u.Mm).value)
+        self.slider_height = Slider(ax_slider_height, 'Height [Mm]', -300, 300, valinit=self.height.to(u.Mm).value)
+        self.slider_phi0 = Slider(ax_slider_phi0, r'HGLN $\Phi$ [deg]', 0, 360, valinit=self.phi0.to(u.deg).value)
+        self.slider_theta0 = Slider(ax_slider_theta0, r'HGLT $\Theta$ [deg]', -90, 90,
+                                    valinit=self.theta0.to(u.deg).value)
+        self.slider_el = Slider(ax_slider_el, 'Elevation [deg]', 0, 180, valinit=self.el.to(u.deg).value)
+        self.slider_az = Slider(ax_slider_az, 'Azimuth [deg]', 0, 360, valinit=self.az.to(u.deg).value)
         self.slider_samples_num = Slider(ax_slider_samples_num, 'Samples Num', 10, 2000, valinit=self.samples_num,
                                          valstep=10)
         self.slider_samples_num.valtext.set_text('{:.0f}'.format(self.slider_samples_num.val))  # Display as integer
@@ -226,73 +266,73 @@ class CoronalLoopBuilder:
             self.from_textbox = True
             self.slider_radius.set_val(float(text))
             self.from_textbox = False
-            self.update(None)
+            self._update(None)
 
         def submit_height(text):
             self.from_textbox = True
             self.slider_height.set_val(float(text))
             self.from_textbox = False
-            self.update(None)
+            self._update(None)
 
         def submit_phi0(text):
             self.from_textbox = True
             self.slider_phi0.set_val(float(text))
             self.from_textbox = False
-            self.update(None)
+            self._update(None)
 
         def submit_theta0(text):
             self.from_textbox = True
             self.slider_theta0.set_val(float(text))
             self.from_textbox = False
-            self.update(None)
+            self._update(None)
 
         def submit_el(text):
             self.from_textbox = True
             self.slider_el.set_val(float(text))
             self.from_textbox = False
-            self.update(None)
+            self._update(None)
 
         def submit_az(text):
             self.from_textbox = True
             self.slider_az.set_val(float(text))
             self.from_textbox = False
-            self.update(None)
+            self._update(None)
 
         def submit_samples_num(text):
             self.from_textbox = True
             self.slider_samples_num.set_val(float(text))
             self.from_textbox = False
-            self.update(None)
+            self._update(None)
 
         axbox_radius = axs_sliders[0, 1]
         self.text_box_radius = TextBox(axbox_radius, '')
         self.text_box_radius.on_submit(submit_radius)
-        self.text_box_radius.set_val(f"{self.radius.value:.1f}")
+        self.text_box_radius.set_val(f"{self.radius.to(u.Mm).value:.1f}")
 
         axbox_height = axs_sliders[1, 1]
         self.text_box_height = TextBox(axbox_height, '')
         self.text_box_height.on_submit(submit_height)
-        self.text_box_height.set_val(f"{self.height.value:.1f}")
+        self.text_box_height.set_val(f"{self.height.to(u.Mm).value:.1f}")
 
         axbox_phi0 = axs_sliders[2, 1]
         self.text_box_phi0 = TextBox(axbox_phi0, '')
         self.text_box_phi0.on_submit(submit_phi0)
-        self.text_box_phi0.set_val(f"{self.phi0.value:.2f}")
+        self.text_box_phi0.set_val(f"{self.phi0.to(u.deg).value:.2f}")
 
         axbox_theta0 = axs_sliders[3, 1]
         self.text_box_theta0 = TextBox(axbox_theta0, '')
         self.text_box_theta0.on_submit(submit_theta0)
-        self.text_box_theta0.set_val(f"{self.theta0.value:.2f}")
+        self.text_box_theta0.set_val(f"{self.theta0.to(u.deg).value:.2f}")
 
         axbox_el = axs_sliders[4, 1]
         self.text_box_el = TextBox(axbox_el, '')
         self.text_box_el.on_submit(submit_el)
-        self.text_box_el.set_val(f"{self.el.value:.2f}")
+        self.text_box_el.set_val(f"{self.el.to(u.deg).value:.2f}")
 
         axbox_az = axs_sliders[5, 1]
         self.text_box_az = TextBox(axbox_az, '')
         self.text_box_az.on_submit(submit_az)
-        self.text_box_az.set_val(f"{self.az.value:.2f}")
+        self.text_box_az.set_val(f"{self.az.to(u.deg).value:.2f}")
 
         axbox_samples_num = axs_sliders[6, 1]
         self.text_box_samples_num = TextBox(axbox_samples_num, '')
@@ -300,24 +340,29 @@ class CoronalLoopBuilder:
         self.text_box_samples_num.set_val(f"{int(self.samples_num):.0f}")
 
         # Attach update function to sliders
-        self.slider_radius.on_changed(self.update)
-        self.slider_height.on_changed(self.update)
-        self.slider_theta0.on_changed(self.update)
-        self.slider_phi0.on_changed(self.update)
-        self.slider_el.on_changed(self.update)
-        self.slider_az.on_changed(self.update)
-        self.slider_samples_num.on_changed(self.update_samples_num)
+        self.slider_radius.on_changed(self._update)
+        self.slider_height.on_changed(self._update)
+        self.slider_theta0.on_changed(self._update)
+        self.slider_phi0.on_changed(self._update)
+        self.slider_el.on_changed(self._update)
+        self.slider_az.on_changed(self._update)
+        self.slider_samples_num.on_changed(self._update_samples_num)
 
         # Create a button to print the values
-        ax_button_print = self.slider_fig.add_axes([0.7, 0.01, 0.2, 0.07])  # Adjust the position and size as needed
-        self.button_print_values = plt.Button(ax_button_print, 'Print Values')
-        self.button_print_values.on_clicked(self.print_values)
+        ax_button_print = self.slider_fig.add_axes([0.7, 0.02, 0.08, 0.07])
+        self.button_print_values = plt.Button(ax_button_print, 'Print')
+        self.button_print_values.on_clicked(self._print_values)
+
+        # Add "Reset" button next to "Print Values" button
+        ax_reset = plt.axes([0.6, 0.02, 0.08, 0.07])
+        self.button_reset = plt.Button(ax_reset, 'Reset')
+        self.button_reset.on_clicked(self._reset_sliders)
 
         # turn the flag off when the class is still initialized
         self.initializing = False
         self.updating_sliders = False
 
-    def init_toggle_button(self):
+    def _init_toggle_button(self):
         """
         Initialize a button to toggle the visibility of the sliders.
         """
@@ -325,9 +370,9 @@ class CoronalLoopBuilder:
         if not hasattr(self, 'button_toggle_sliders'):
             self.ax_button_sliders_toggle = self.fig.add_axes([0.8, 0.9, 0.1, 0.04])
             self.button_toggle_sliders = plt.Button(self.ax_button_sliders_toggle, 'Settings')
-            self.button_toggle_sliders.on_clicked(self.toggle_sliders)
+            self.button_toggle_sliders.on_clicked(self._toggle_sliders)
 
-    def toggle_sliders(self, event):
+    def _toggle_sliders(self, event):
         """
         Toggle the visibility of the sliders.
         """
@@ -337,20 +382,25 @@ class CoronalLoopBuilder:
             self.slider_fig = None
             self.initializing = True
         else:
-            self.init_sliders()
+            self._init_sliders()
             self.initializing = True
             # Set the sliders to the current values
-            self.slider_radius.set_val(self.radius.value)
-            self.slider_height.set_val(self.height.value)
-            self.slider_phi0.set_val(self.phi0.value)
-            self.slider_theta0.set_val(self.theta0.value)
-            self.slider_el.set_val(self.el.value)
-            self.slider_az.set_val(self.az.value)
-            self.initializing = False
-            self.slider_samples_num.set_val(int(self.samples_num))
-            self.init_toggle_button()
+            self._init_sliders_value(None)
+            self._init_toggle_button()
 
-    def update_samples_num(self, val):
+    def _init_sliders_value(self, event):
+        self.initializing = True
+        # Set the sliders to the current values
+        self.slider_radius.set_val(self.radius.to(u.Mm).value)
+        self.slider_height.set_val(self.height.to(u.Mm).value)
+        self.slider_phi0.set_val(self.phi0.to(u.deg).value)
+        self.slider_theta0.set_val(self.theta0.to(u.deg).value)
+        self.slider_el.set_val(self.el.to(u.deg).value)
+        self.slider_az.set_val(self.az.to(u.deg).value)
+        self.initializing = False
+        self.slider_samples_num.set_val(int(self.samples_num))
+
+    def _update_samples_num(self, val):
         """
         Update the number of samples and ensure the displayed value is an integer.
         """
@@ -358,9 +408,9 @@ class CoronalLoopBuilder:
         # Ensure the displayed value is an integer
         self.samples_num = int(self.slider_samples_num.val)
         self.slider_samples_num.valtext.set_text(f"{int(self.slider_samples_num.val)}")
-        self.update(val)
+        self._update(val)
 
-    def compute_loop(self):
+    def _compute_loop(self):
         """
         Compute the coordinates of the coronal loop based on the current slider values.
         """
@@ -368,16 +418,34 @@ class CoronalLoopBuilder:
                                                   int(self.samples_num))
         return loop
 
-    def print_values(self, event):
-        print(f"{self.radius.value:.1f} * u.{self.radius.unit}, "
-              f"{self.height.value:.1f} * u.{self.height.unit}, "
-              f"{self.phi0.value:.2f} * u.{self.phi0.unit}, "
-              f"{self.theta0.value:.2f} * u.{self.theta0.unit}, "
-              f"{self.el.value:.2f} * u.{self.el.unit}, "
-              f"{self.az.value:.2f} * u.{self.az.unit}, "
-              f"{int(self.samples_num)}")
+    def _print_values(self, event):
+        print(f"radius = {self.radius.value:.1f} * u.{self.radius.unit}, "
+              f"height = {self.height.value:.1f} * u.{self.height.unit}, "
+              f"phi0 = {self.phi0.value:.2f} * u.{self.phi0.unit}, "
+              f"theta0 = {self.theta0.value:.2f} * u.{self.theta0.unit}, "
+              f"el = {self.el.value:.2f} * u.{self.el.unit}, "
+              f"az = {self.az.value:.2f} * u.{self.az.unit}, "
+              f"samples_num = {int(self.samples_num)}")
 
-    def update(self, val):
+    def _reset_sliders(self, event):
+        # Reset the sliders to their initial values
+        self.initializing = True
+        self.slider_radius.set_val(self.initial_radius.to(u.Mm).value)
+        self.slider_height.set_val(self.initial_height.to(u.Mm).value)
+        self.slider_phi0.set_val(self.initial_phi0.to(u.deg).value)
+        self.slider_theta0.set_val(self.initial_theta0.to(u.deg).value)
+        self.slider_el.set_val(self.initial_el.to(u.deg).value)
+        self.slider_az.set_val(self.initial_az.to(u.deg).value)
+        self.initializing = False
+        self.slider_samples_num.set_val(int(self.initial_samples_num))
+
+        # Update the loop with the initial values
+        self._update(None)
+
+        print('Restore to initial values')
+        self._print_values(None)
+
+    def _update(self, val):
         """
         Update the visualization based on the current slider values.
         """
@@ -396,20 +464,20 @@ class CoronalLoopBuilder:
         # Ensure height does not exceed radius
         if self.height > self.radius:
             self.height = self.radius * 0.9
-            self.slider_height.set_val(self.height.value)  # Update the slider value to reflect the change
+            self.slider_height.set_val(self.height.to(u.Mm).value)  # Update the slider value to reflect the change
         if self.height < -self.radius:
             self.height = -self.radius * 0.9
-            self.slider_height.set_val(self.height.value)  # Update the slider value to reflect the change
+            self.slider_height.set_val(self.height.to(u.Mm).value)  # Update the slider value to reflect the change
 
         # newheight = u.Quantity(self.slider_height.val, u.Mm)
         # if newheight > self.radius:
-        #     self.slider_height.set_val(self.height.value)
+        #     self.slider_height.set_val(self.height.to(u.Mm).value)
         # elif newheight < -self.radius:
-        #     self.slider_height.set_val(self.height.value)
+        #     self.slider_height.set_val(self.height.to(u.Mm).value)
         # else:
         #     self.height = newheight
 
-        self.loop_coords = self.compute_loop()
+        self.loop_coords = self._compute_loop()
         self.midptn_coords = (
             SkyCoord(lon=self.phi0, lat=self.theta0, radius=const.R_sun, frame='heliographic_stonyhurst'))
 
@@ -441,17 +509,17 @@ class CoronalLoopBuilder:
 
         # Update text box values
         if hasattr(self, 'text_box_radius'):
-            self.text_box_radius.set_val(f"{self.radius.value:.1f}")
+            self.text_box_radius.set_val(f"{self.radius.to(u.Mm).value:.1f}")
         if hasattr(self, 'text_box_height'):
-            self.text_box_height.set_val(f"{self.height.value:.1f}")
+            self.text_box_height.set_val(f"{self.height.to(u.Mm).value:.1f}")
         if hasattr(self, 'text_box_phi0'):
-            self.text_box_phi0.set_val(f"{self.phi0.value:.2f}")
+            self.text_box_phi0.set_val(f"{self.phi0.to(u.deg).value:.2f}")
         if hasattr(self, 'text_box_theta0'):
-            self.text_box_theta0.set_val(f"{self.theta0.value:.2f}")
+            self.text_box_theta0.set_val(f"{self.theta0.to(u.deg).value:.2f}")
         if hasattr(self, 'text_box_el'):
-            self.text_box_el.set_val(f"{self.el.value:.2f}")
+            self.text_box_el.set_val(f"{self.el.to(u.deg).value:.2f}")
         if hasattr(self, 'text_box_az'):
-            self.text_box_az.set_val(f"{self.az.value:.2f}")
+            self.text_box_az.set_val(f"{self.az.to(u.deg).value:.2f}")
         if hasattr(self, 'text_box_samples_num'):
             self.text_box_samples_num.set_val(f"{int(self.samples_num)}")
 
@@ -489,3 +557,43 @@ class CoronalLoopBuilder:
             self.button_toggle_sliders.ax.set_visible(True)
             self.fig.canvas.draw_idle()
         print(f"Loop fig saved to {figname}!")
+
+    def set_loop(self, **kwargs):
+        """
+        Update the loop using the provided parameters.
+
+        Parameters:
+        - radius: Radius of the semi-circular loop in units compatible with astropy.units (e.g., u.Mm).
+        - height: Height of the center of the circle relative to the photosphere in units compatible with astropy.units (e.g., u.Mm).
+        - phi0: Heliographic Stonyhurst longitude (phi) of the center of the circle. Default is 0 degrees.
+        - theta0: Heliographic Stonyhurst latitude (theta) of the center of the circle. Default is 0 degrees.
+        - el: Elevation angle of the circle's normal. It ranges from 0 to 180 degrees. Default is 90 degrees.
+        - az: Azimuth angle of the circle's normal. It ranges from 0 to 360 degrees. Default is 0 degrees.
+        - samples_num: Number of samples for the parameter t. Default is 1000.
+        """
+        # Update the loop parameters with the provided values
+        if 'radius' in kwargs:
+            self.radius = kwargs['radius']
+        if 'height' in kwargs:
+            self.height = kwargs['height']
+        if 'phi0' in kwargs:
+            self.phi0 = kwargs['phi0']
+        if 'theta0' in kwargs:
+            self.theta0 = kwargs['theta0']
+        if 'el' in kwargs:
+            self.el = kwargs['el']
+        if 'az' in kwargs:
+            self.az = kwargs['az']
+        if 'samples_num' in kwargs:
+            self.samples_num = kwargs['samples_num']
+
+        if self.slider_fig is not None and plt.fignum_exists(self.slider_fig.number):
+            self.initializing = True
+            # Set the sliders to the current values
+            self._init_sliders_value(None)
+            # Now, recompute the loop with the updated parameters
+
+        self._update(None)
+
+        # Redraw the figure to reflect the changes
+        self.fig.canvas.draw()

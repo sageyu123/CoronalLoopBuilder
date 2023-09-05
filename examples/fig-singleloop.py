@@ -78,8 +78,8 @@ for midx, dummy_map in enumerate(dummy_maps):
     dummy_map.draw_limb(axes=ax, color='k')
 
 # Initialize the CoronalLoopBuilder with the dummy maps
-coronal_loop = CoronalLoopBuilder(fig, axs, dummy_maps, 50 * u.Mm, -10 * u.Mm, 45 * u.deg, 30 * u.deg,
-                                  100 * u.deg, 10 * u.deg, 100)
+coronal_loop = CoronalLoopBuilder(fig, axs, dummy_maps, radius=50 * u.Mm, height=-10 * u.Mm, phi0=45 * u.deg, theta0=30 * u.deg,
+                                  el=100 * u.deg, az=10 * u.deg, samples_num=100)
 
 plt.show()
 
