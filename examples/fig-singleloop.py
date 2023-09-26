@@ -87,6 +87,12 @@ plt.show()
 # you can save the loop data to a pickle file for future use:
 coronal_loop.save_loop_data_to_pickle("my_loop_coords.pkl")
 
+## change the loop parameters
+coronal_loop.set_loop(radius=30* u.Mm, height=1.2 * u.Mm,
+                      phi0=31 * u.deg, theta0=13 * u.deg,
+                      el=105 * u.deg, az=12.5 * u.deg, samples_num=500, loop_color='red',
+                      center_color='white')
+
 # To capture a clean visualization of the loop without any UI elements,
 # save the current figure to a high-resolution PDF:
 coronal_loop.save_to_fig("fig-my_loop.pdf", dpi=300, bbox_inches='tight')
