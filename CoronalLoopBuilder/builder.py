@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider, TextBox
 import pickle
 import warnings
+import os
 from astropy.time import Time
 
 
@@ -122,10 +123,14 @@ def semi_circle_loop(radius, height, theta0=0 * u.deg, phi0=0 * u.deg, el=90 * u
     # Calculate the arc length
     loop_length = alpha.value * radius
     print('Loop length:', loop_length)
+    # relative to 0,0 in helio_stony
+    #
+    # Put dummy observer at the earth
     hcc_frame = Heliocentric(observer=SkyCoord(
         lon=phi0, lat=theta0, radius=r_1, frame='heliographic_stonyhurst'))
     return (SkyCoord(x=x, y=y, z=z, frame=hcc_frame).transform_to('heliographic_stonyhurst')), loop_length
-
+    # Assume MHD has correct transformation
+    # Subtract to get relative x, y, z
 
 class CoronalLoopBuilder:
     """
@@ -160,14 +165,27 @@ class CoronalLoopBuilder:
         self.axs = axs
         self.dummy_maps = dummy_maps
 
-        # Set the loop parameters using the provided values or default values
-        self.radius = kwargs.get('radius', DEFAULT_RADIUS)
-        self._height = kwargs.get('height', DEFAULT_HEIGHT)
-        self.phi0 = kwargs.get('phi0', DEFAULT_PHI0)
-        self.theta0 = kwargs.get('theta0', DEFAULT_THETA0)
-        self.el = kwargs.get('el', DEFAULT_EL)
-        self.az = kwargs.get('az', DEFAULT_AZ)
-        self.samples_num = kwargs.get('samples_num', DEFAULT_SAMPLES_NUM)
+        if 'pkl' in kwargs:
+            with open(kwargs.get('pkl'), 'rb') as f:
+                dims = pickle.load(f)
+                print(f'Loop dimensions loaded:{dims}')
+                self.radius = dims['radius']
+                self._height = dims['height']
+                self.phi0 = dims['phi0']
+                self.theta0 = dims['theta0']
+                self.el = dims['el']
+                self.az = dims['az']
+                self.samples_num = dims['samples_num']
+                f.close()
+        else:
+            # Set the loop parameters using the provided values or default values
+            self.radius = kwargs.get('radius', DEFAULT_RADIUS)
+            self._height = kwargs.get('height', DEFAULT_HEIGHT)
+            self.phi0 = kwargs.get('phi0', DEFAULT_PHI0)
+            self.theta0 = kwargs.get('theta0', DEFAULT_THETA0)
+            self.el = kwargs.get('el', DEFAULT_EL)
+            self.az = kwargs.get('az', DEFAULT_AZ)
+            self.samples_num = kwargs.get('samples_num', DEFAULT_SAMPLES_NUM)
 
         # Store the initial values as class attributes
         self.initial_radius = self.radius
@@ -201,7 +219,10 @@ class CoronalLoopBuilder:
 
         self.lines = []
         self.ptns = []
+
+        # Calls semi_circle_loop
         self.loop_coords = self._compute_loop()
+        # Coordinates for red dot at surface of sun (goes up through loop diameter)
         self.midptn_coords = (
             SkyCoord(lon=self.phi0, lat=self.theta0, radius=const.R_sun, frame='heliographic_stonyhurst'))
 
@@ -539,7 +560,47 @@ class CoronalLoopBuilder:
 
         with open(filename, 'wb') as file:
             pickle.dump(data_to_save, file)
+            file.close()
         print(f"Loop coords data saved to {filename}!")
+
+    def save_params_to_pickle(self, filename="dims.pkl"):
+        """
+                Save the CoronalLoopBuilder parameters to a pickle file.
+
+                Parameters:
+                - filename (str): The name of the pickle file to save to. Defaults to "dims.pkl".
+                """
+        data_to_save = {
+            'radius': self.radius, 'height': self._height,
+            'phi0': self.phi0, 'theta0': self.theta0,
+            'el': self.el, 'az': self.az,
+            'samples_num': self.samples_num
+        }
+
+        dirname = 'loop_params'
+        os.makedirs(f'./{dirname}', exist_ok=True)
+
+        with open(f'./{dirname}/{filename}', 'wb') as file:
+            pickle.dump(data_to_save, file)
+            file.close()
+        print(f"Loop dimensions saved to './{dirname}/{filename}'!")
+
+    def save_map_to_pickle(self, filename="map.pkl"):
+        """
+                Save the map to a pickle file.
+
+                Parameters:
+                - filename (str): The name of the pickle file to save to. Defaults to "map.pkl".
+                """
+
+        dirname = 'maps'
+        os.makedirs(f'./{dirname}', exist_ok=True)
+
+        for i, map in enumerate(self.dummy_maps):
+            with open(f'./{dirname}/{i}_{filename}', 'wb') as file:
+                pickle.dump(map, file)
+                file.close()
+            print(f"Map saved to './{dirname}/{i}_{filename}'!")
 
     def save_to_fig(self, figname, **kwargs):
         # Hide the "Settings" button
