@@ -47,6 +47,42 @@ def circle_3d(x0, y0, z0, r, theta, phi, t):
 
     return x, y, z
 
+def ellipse_3d(x0, y0, z0, a, b, theta, phi, t):
+    """
+    Compute the parametric equations for a circle in 3D.
+
+    Parameters:
+    - x0, y0, z0: Coordinates of the center of the circle.
+    - r: Radius of the circle.
+    - theta: Elevation angle of the circle's normal (in radians).
+    - phi: Azimuth angle of the circle's normal (in radians).
+    - t: Array of parameter values, typically ranging from 0 to 2*pi.
+
+    Returns:
+    - x, y, z: Arrays representing the x, y, and z coordinates of the circle in 3D.
+    """
+
+    # Normal vector
+    n = np.array([np.sin(theta) * np.cos(phi), np.sin(theta) * np.sin(phi), np.cos(theta)])
+
+    # Arbitrary vector (z-axis)
+    z = np.array([0, 0, 1])
+
+    # Orthogonal vector in the plane of the circle
+    u = np.cross(n, z)
+    u /= np.linalg.norm(u)  # Normalize
+
+    # Another orthogonal vector in the plane
+    v = np.cross(n, u)
+    v /= np.linalg.norm(v)  # Normalize
+
+    # Parametric equations
+    x = x0 + a * np.cos(t) * u[0] + b * np.sin(t) * v[0]
+    y = y0 + a * np.cos(t) * u[1] + b * np.sin(t) * v[1]
+    z = z0 + a * np.cos(t) * u[2] + b * np.sin(t) * v[2]
+
+    return x, y, z
+
 
 def semi_circle_loop(radius, height, theta0=0 * u.deg, phi0=0 * u.deg, el=90 * u.deg, az=0 * u.deg, samples_num=100):
     '''
@@ -78,7 +114,8 @@ def semi_circle_loop(radius, height, theta0=0 * u.deg, phi0=0 * u.deg, el=90 * u
     phi = az.to(u.rad).value  # np.pi / 4  # Azimuth angle
     t = np.linspace(0, 2 * np.pi, int(samples_num))  # Parameter t
 
-    dx, dy, dz = circle_3d(0, 0, 0, radius, theta, phi, t)
+    # dx, dy, dz = circle_3d(0, 0, 0, radius, theta, phi, t)
+    dx, dy, dz = ellipse_3d(0, 0, 0, radius, radius/2, theta, phi, t)
 
     x = x0 + dx
     y = y0 + dy
@@ -226,9 +263,11 @@ class CoronalLoopBuilder:
         self.midptn_coords = (
             SkyCoord(lon=self.phi0, lat=self.theta0, radius=const.R_sun, frame='heliographic_stonyhurst'))
 
+        self.color = kwargs.get('color', 'C0')
+
         for ax, dummy_map in zip(self.axs, self.dummy_maps):
-            line, = ax.plot_coord(self.loop_coords.transform_to(dummy_map.coordinate_frame), color='C0', lw=2)
-            ptn, = ax.plot_coord(self.midptn_coords.transform_to(dummy_map.coordinate_frame), color='C3', marker='o',
+            line, = ax.plot_coord(self.loop_coords.transform_to(dummy_map.coordinate_frame), color=self.color, lw=2)
+            ptn, = ax.plot_coord(self.midptn_coords.transform_to(dummy_map.coordinate_frame), color=self.color, marker='o',
                                  ms=3)
             self.lines.append(line)
             self.ptns.append(ptn)
@@ -260,6 +299,8 @@ class CoronalLoopBuilder:
         # Create a separate figure for the sliders
         self.slider_fig, axs_sliders = plt.subplots(nrows=7, ncols=2, figsize=(6, 3), width_ratios=[5, 1])
         self.slider_fig.subplots_adjust(left=0.3, wspace=0.1)
+
+        plt.get_current_fig_manager().set_window_title(self.color + '-loop')
 
         # # Create sliders
         ax_slider_radius, ax_slider_height, ax_slider_phi0, ax_slider_theta0, \
