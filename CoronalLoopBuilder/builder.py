@@ -197,6 +197,8 @@ class CoronalLoopBuilder:
         DEFAULT_EL = 90.0 * u.deg
         DEFAULT_AZ = 0.0 * u.deg
         DEFAULT_SAMPLES_NUM = 1000
+        DEFAULT_loop_color = 'C0'
+        DEFAULT_center_color = 'C3'
 
         self.fig = fig
         self.axs = axs
@@ -267,8 +269,7 @@ class CoronalLoopBuilder:
 
         for ax, dummy_map in zip(self.axs, self.dummy_maps):
             line, = ax.plot_coord(self.loop_coords.transform_to(dummy_map.coordinate_frame), color=self.color, lw=2)
-            ptn, = ax.plot_coord(self.midptn_coords.transform_to(dummy_map.coordinate_frame), color=self.color, marker='o',
-                                 ms=3)
+            ptn, = ax.plot_coord(self.midptn_coords.transform_to(dummy_map.coordinate_frame), color=self.color, marker='o', ms=3)
             self.lines.append(line)
             self.ptns.append(ptn)
         self._init_sliders()
@@ -554,20 +555,6 @@ class CoronalLoopBuilder:
 
         for ax in self.axs:
             ax.figure.canvas.draw_idle()
-
-        # for line, ptn in zip(self.lines, self.ptns):
-        #     line.remove()
-        #     ptn.remove()
-        #
-        # self.lines = []
-        # self.ptns = []
-        # for ax, dummy_map in zip(self.axs, self.dummy_maps):
-        #     line, = ax.plot_coord(self.loop_coords.transform_to(dummy_map.coordinate_frame), color='C0', lw=2)
-        #     ptn, = ax.plot_coord(self.midptn_coords.transform_to(dummy_map.coordinate_frame), color='C3', marker='o',
-        #                          ms=3)
-        #     self.lines.append(line)
-        #     self.ptns.append(ptn)
-        #     ax.figure.canvas.draw_idle()
 
         # Update text box values
         if hasattr(self, 'text_box_radius'):
